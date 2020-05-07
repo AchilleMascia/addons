@@ -32,9 +32,15 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 
 from tensorflow.python.keras.layers.pooling import AveragePooling1D
+from tensorflow.python.keras.layers.pooling import AveragePooling2D
+from tensorflow.python.keras.layers.pooling import AveragePooling3D
 from tensorflow.python.keras.layers import UpSampling1D
+from tensorflow.python.keras.layers import UpSampling2D
+from tensorflow.python.keras.layers import UpSampling3D
 
 from tensorflow.python.keras.layers.convolutional import Conv1D
+from tensorflow.python.keras.layers.convolutional import Conv2D
+from tensorflow.python.keras.layers.convolutional import Conv3D
 
 from tensorflow.python.keras.utils import conv_utils
 
@@ -597,3 +603,489 @@ class OctaveConv1D(OctaveConv):
             )
 
         super(OctaveConv1D, self).build(input_shape)
+
+
+@tf.keras.utils.register_keras_serializable(package="Addons")
+class OctaveConv2D(OctaveConv):
+    """2D octave convolution layer.
+
+    This layer creates 4 2D-convolution layers that produce 2 tensors of
+    outputs (see the documentation of OctaveConv for more information).
+    If `use_bias` is True (and a `bias_initializer` is provided),
+    a bias vector is created and added to the outputs. Finally, if
+    `activation` is not `None`, it is applied to the outputs as well.
+
+    When using this layer as the first layer in a model,
+    provide the keyword argument `input_shape`
+    (tuple of integers, does not include the sample axis),
+    e.g. `input_shape=(128, 128, 3)` for 128x128 RGB pictures
+    in `data_format="channels_last"`.
+
+    Examples:
+
+    >>> # The inputs are 28x28 RGB images with `channels_last` and the batch
+    >>> # size is None.
+    >>> x = Input(shape=(28,28,3,))
+    >>> y = tf.keras.layers.octave_convolutional.OctaveConv2D(
+    ... 32, 3, activation='relu', low_freq_ratio=0.25)(x)
+    >>> print(len(y))
+    2
+    >>> print(y.shape)
+    (None, 28, 28, 24) (None, 14, 14, 8)
+
+    Arguments
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of n integers, specifying the
+        length of the convolution window.
+      octave: the reduction factor of the spatial dimensions. It must be a
+        power of 2.
+      low_freq_ratio: The ratio of filters for lower spatial resolution.
+      strides: An integer or tuple/list of n integers,
+        specifying the stride length of the convolution.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: Only `"same"` is considered for octave convolutions
+      data_format: A string, one of `channels_last` (default) or `channels_first`.
+        The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape
+        `(batch, ..., channels)` while `channels_first` corresponds to
+        inputs with shape `(batch, channels, ...)`.
+      dilation_rate: An integer or tuple/list of n integers, specifying
+        the dilation rate to use for dilated convolution.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any `strides` value != 1.
+      activation: Activation function. Set it to None to maintain a
+        linear activation.
+      use_bias: Boolean, whether the layer uses a bias.
+      kernel_initializer: An initializer for the convolution kernel.
+      bias_initializer: An initializer for the bias vector. If None, the default
+        initializer will be used.
+      kernel_regularizer: Optional regularizer for the convolution kernel.
+      bias_regularizer: Optional regularizer for the bias vector.
+      activity_regularizer: Optional regularizer function for the output.
+      kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+      bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
+
+    Input shape:
+      First case,
+        single input (e.g. first octave convolution layer of the
+        architecture):
+          4D tensor with shape:
+          `(samples, channels, rows, cols)` if data_format='channels_first'
+          or 4D tensor with shape:
+          `(samples, rows, cols, channels)` if data_format='channels_last'.
+      Second case,
+        two inputs:
+          list of two 4D tensors with shape:
+          [`(samples, (1-ratio_out) * filters, rows_H, cols_H)`,
+          `(samples, ratio_out * filters, rows_L, cols_L)`] if
+          data_format='channels_first'
+          or list of two 4D tensors with shape:
+          [`(samples, rows_H, cols_H, (1-ratio_out) * filters)`,
+          `(samples, rows_L, cols_L, ratio_out * filters)`] if
+          data_format='channels_last'
+          suffixes _H for high frequency feature maps and _L for low frequency
+          feature maps
+
+    Output shape:
+      First case,
+        single output (e.g. last octave convolution layer of the
+        architecture):
+          4D tensor with shape:
+          `(samples, channels, new_rows, new_cols)` if data_format='channels_first'
+          or 4D tensor with shape:
+          `(samples, new_rows, new_cols, channels)` if data_format='channels_last'.
+      Second case,
+        list of two 4D tensors with shape:
+          [`(samples, (1-ratio_out) * filters, new_rows_H, new_cols_H)`,
+          `(samples, ratio_out * filters, new_rows_L, new_cols_L)`] if
+          data_format='channels_first'
+        or list of two 4D tensors with shape:
+          [`(samples, new_rows_H, new_cols_H, (1-ratio_out) * filters)`,
+          `(samples, new_rows_L, new_cols_L, ratio_out * filters)`] if
+          data_format='channels_last'
+          suffixes _H for high frequency feature maps and _L for low frequency
+          feature maps
+
+    Raises:
+      ValueError: if `padding` is "causal".
+      ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+
+    References
+      - [Drop an Octave: Reducing Spatial Redundancy in Convolutional Neural
+        Networks with Octave Convolution]
+        (https://arxiv.org/pdf/1904.05049.pdf)
+    """
+
+    def __init__(
+        self,
+        filters,
+        kernel_size,
+        octave=2,
+        low_freq_ratio=0.5,
+        strides=(1, 1),
+        padding="same",
+        data_format=None,
+        dilation_rate=(1, 1),
+        activation=None,
+        use_bias=True,
+        kernel_initializer="glorot_uniform",
+        bias_initializer="zeros",
+        kernel_regularizer=None,
+        bias_regularizer=None,
+        activity_regularizer=None,
+        kernel_constraint=None,
+        bias_constraint=None,
+        **kwargs
+    ):
+        super(OctaveConv2D, self).__init__(
+            rank=2,
+            filters=filters,
+            kernel_size=kernel_size,
+            octave=octave,
+            low_freq_ratio=low_freq_ratio,
+            strides=strides,
+            padding=padding,
+            data_format=conv_utils.normalize_data_format(data_format),
+            dilation_rate=dilation_rate,
+            activation=activation,
+            use_bias=use_bias,
+            kernel_initializer=kernel_initializer,
+            bias_initializer=bias_initializer,
+            kernel_regularizer=kernel_regularizer,
+            bias_regularizer=bias_regularizer,
+            activity_regularizer=activity_regularizer,
+            kernel_constraint=kernel_constraint,
+            bias_constraint=bias_constraint,
+            **kwargs,
+        )
+
+        self.pooling = AveragePooling2D(
+            pool_size=self.octave,
+            padding="valid",
+            data_format=data_format,
+            name="{}-AveragePooling2D".format(self.name),
+        )
+        self.up_sampling = UpSampling2D(
+            size=self.octave,
+            data_format=data_format,
+            interpolation="nearest",
+            name="{}-UpSampling2D".format(self.name),
+        )
+
+    def _init_conv(self, filters, name):
+        return Conv2D(
+            filters=filters,
+            kernel_size=self.kernel_size,
+            strides=self.strides,
+            padding=self.padding,
+            data_format=self.data_format,
+            dilation_rate=self.dilation_rate,
+            activation=self.activation,
+            use_bias=self.use_bias,
+            kernel_initializer=self.kernel_initializer,
+            bias_initializer=self.bias_initializer,
+            kernel_regularizer=self.kernel_regularizer,
+            bias_regularizer=self.bias_regularizer,
+            activity_regularizer=self.activity_regularizer,
+            kernel_constraint=self.kernel_constraint,
+            bias_constraint=self.bias_constraint,
+            trainable=self.trainable,
+            name=name,
+        )
+
+    def build(self, input_shape):
+        if isinstance(input_shape, list):
+            input_shape_high, input_shape_low = input_shape
+        else:
+            input_shape_high, input_shape_low = input_shape, None
+        if len(input_shape_high) != 4:
+            raise ValueError(
+                "High frequency input should have rank 4; Received "
+                "input shape {}".format(str(input_shape_high))
+            )
+        if input_shape_low is not None and len(input_shape_low) != 4:
+            raise ValueError(
+                "Low frequency input should have rank 4; Received "
+                "input shape {}".format(str(input_shape_low))
+            )
+        if self.data_format == "channels_first":
+            channel_axis, rows_axis, cols_axis = 1, 2, 3
+        else:
+            rows_axis, cols_axis, channel_axis = 1, 2, 3
+        if input_shape_high[channel_axis] is None:
+            raise ValueError(
+                "The channel dimension of the higher spatial inputs "
+                "should be defined. Found `None`."
+            )
+        if input_shape_low is not None and input_shape_low[channel_axis] is None:
+            raise ValueError(
+                "The channel dimension of the lower spatial inputs "
+                "should be defined. Found `None`."
+            )
+        if (
+            input_shape_high[rows_axis] is not None
+            and input_shape_high[rows_axis] % self.octave != 0
+            or input_shape_high[cols_axis] is not None
+            and input_shape_high[cols_axis] % self.octave != 0
+        ):
+            raise ValueError(
+                "The rows and columns of the higher spatial inputs should be "
+                "divisible by the octave. "
+                "Found {} and {}.".format(input_shape_high, self.octave)
+            )
+
+        super(OctaveConv2D, self).build(input_shape)
+
+
+@tf.keras.utils.register_keras_serializable(package="Addons")
+class OctaveConv3D(OctaveConv):
+    """3D octave convolution layer.
+
+    This layer creates 4 3D-convolution layers that produce 2 tensors of
+    outputs(see the documentation of OctaveConv for more information).
+    If `use_bias` is True (and a `bias_initializer` is provided),
+    a bias vector is created and added to the outputs. Finally, if
+    `activation` is not `None`, it is applied to the outputs as well.
+
+    When using this layer as the first layer in a model,
+    provide the keyword argument `input_shape`
+    (tuple of integers, does not include the sample axis),
+    e.g. `input_shape=(128, 128, 128, 1)` for 128x128x128 volumes
+    with a single channel,
+    in `data_format="channels_last"`.
+
+    Examples:
+
+    >>> # The inputs are 28x28x28 volumes with a single channel, and the
+    >>> # batch size is None.
+    >>> x = Input(shape=(28, 28, 28, 1,))
+    >>> y = tf.keras.layers.octave_convolutional.OctaveConv3D(
+    ... 32, 3, activation='relu', low_freq_ratio=0.25)(x)
+    >>> print(len(y))
+    2
+    >>> print(y.shape)
+    (None, 28, 28, 28, 24) (None, 14, 14, 14, 8)
+
+    Arguments
+      filters: Integer, the dimensionality of the output space (i.e. the number
+        of filters in the convolution).
+      kernel_size: An integer or tuple/list of n integers, specifying the
+        length of the convolution window.
+      octave: the reduction factor of the spatial dimensions. It must be a
+        power of 2.
+      low_freq_ratio: The ratio of filters for lower spatial resolution.
+      strides: An integer or tuple/list of n integers,
+        specifying the stride length of the convolution.
+        Specifying any stride value != 1 is incompatible with specifying
+        any `dilation_rate` value != 1.
+      padding: Only `"same"` is considered for octave convolutions
+      data_format: A string, one of `channels_last` (default) or `channels_first`.
+        The ordering of the dimensions in the inputs.
+        `channels_last` corresponds to inputs with shape
+        `(batch, ..., channels)` while `channels_first` corresponds to
+        inputs with shape `(batch, channels, ...)`.
+      dilation_rate: An integer or tuple/list of n integers, specifying
+        the dilation rate to use for dilated convolution.
+        Currently, specifying any `dilation_rate` value != 1 is
+        incompatible with specifying any `strides` value != 1.
+      activation: Activation function. Set it to None to maintain a
+        linear activation.
+      use_bias: Boolean, whether the layer uses a bias.
+      kernel_initializer: An initializer for the convolution kernel.
+      bias_initializer: An initializer for the bias vector. If None, the default
+        initializer will be used.
+      kernel_regularizer: Optional regularizer for the convolution kernel.
+      bias_regularizer: Optional regularizer for the bias vector.
+      activity_regularizer: Optional regularizer function for the output.
+      kernel_constraint: Optional projection function to be applied to the
+        kernel after being updated by an `Optimizer` (e.g. used to implement
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+      bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
+      trainable: Boolean, if `True` the weights of this layer will be marked as
+        trainable (and listed in `layer.trainable_weights`).
+      name: A string, the name of the layer.
+
+    Input shape:
+      First case,
+        single input (e.g. first octave convolution layer of the
+        architecture):
+          5D tensor with shape:
+          `(samples, channels, depth, rows, cols)` if data_format='channels_first'
+          or 5D tensor with shape:
+          `(samples, depth, rows, cols, channels)` if data_format='channels_last'.
+      Second case,
+        two inputs:
+          list of two 5D tensors with shape:
+          [`(samples, (1-ratio_out) * filters, depth_H, rows_H, cols_H)`,
+          `(samples, ratio_out * filters, depth_L, rows_L, cols_L)`] if
+          data_format='channels_first'
+          or list of two 5D tensors with shape:
+          [`(samples, depth_H, rows_H, cols_H, (1-ratio_out) * filters)`,
+          `(samples, depth_L, rows_L, cols_L, ratio_out * filters)`] if
+          data_format='channels_last'
+          suffixes _H for high frequency feature maps and _L for low frequency
+          feature maps
+
+    Output shape:
+      First case,
+        single output (e.g. last octave convolution layer of the
+        architecture):
+          5D tensor with shape:
+          `(samples, channels, new_depth, new_rows, new_cols)`
+          if data_format='channels_first'
+          or 5D tensor with shape:
+          `(samples, new_depth, new_rows, new_cols, channels)`
+          if data_format='channels_last'.
+      Second case,
+        list of two 5D tensors with shape:
+          [`(samples, (1-ratio_out) * filters, new_depth_H, new_rows_H, new_cols_H)`,
+          `(samples, ratio_out * filters, new_depth_L, new_rows_L, new_cols_L)`]
+          if data_format='channels_first'
+        or list of two 5D tensors with shape:
+          [`(samples, new_depth_H, new_rows_H, new_cols_H, (1-ratio_out) * filters)`,
+          `(samples, new_depth_L, new_rows_L, new_cols_L, ratio_out * filters)`]
+          if data_format='channels_last'
+          suffixes _H for high frequency feature maps and _L for low frequency
+          feature maps
+
+    Raises:
+      ValueError: if `padding` is "causal".
+      ValueError: when both `strides` > 1 and `dilation_rate` > 1.
+
+    References
+      - [Drop an Octave: Reducing Spatial Redundancy in Convolutional Neural
+         Networks with Octave Convolution]
+        (https://arxiv.org/pdf/1904.05049.pdf)
+    """
+
+    def __init__(
+        self,
+        filters,
+        kernel_size,
+        octave=2,
+        low_freq_ratio=0.25,
+        strides=(1, 1, 1),
+        padding="same",
+        data_format=None,
+        dilation_rate=(1, 1, 1),
+        activation=None,
+        use_bias=True,
+        kernel_initializer="glorot_uniform",
+        bias_initializer="zeros",
+        kernel_regularizer=None,
+        bias_regularizer=None,
+        activity_regularizer=None,
+        kernel_constraint=None,
+        bias_constraint=None,
+        **kwargs
+    ):
+        super(OctaveConv3D, self).__init__(
+            rank=3,
+            filters=filters,
+            kernel_size=kernel_size,
+            octave=octave,
+            low_freq_ratio=low_freq_ratio,
+            strides=strides,
+            padding=padding,
+            data_format=conv_utils.normalize_data_format(data_format),
+            dilation_rate=dilation_rate,
+            activation=activation,
+            use_bias=use_bias,
+            kernel_initializer=kernel_initializer,
+            bias_initializer=bias_initializer,
+            kernel_regularizer=kernel_regularizer,
+            bias_regularizer=bias_regularizer,
+            activity_regularizer=activity_regularizer,
+            kernel_constraint=kernel_constraint,
+            bias_constraint=bias_constraint,
+            **kwargs,
+        )
+
+        self.pooling = AveragePooling3D(
+            pool_size=self.octave,
+            padding="valid",
+            data_format=data_format,
+            name="{}-AveragePooling3D".format(self.name),
+        )
+        self.up_sampling = UpSampling3D(
+            size=self.octave,
+            data_format=data_format,
+            name="{}-UpSampling3D".format(self.name),
+        )
+
+    def _init_conv(self, filters, name):
+        return Conv3D(
+            filters=filters,
+            kernel_size=self.kernel_size,
+            strides=self.strides,
+            padding=self.padding,
+            data_format=self.data_format,
+            dilation_rate=self.dilation_rate,
+            activation=self.activation,
+            use_bias=self.use_bias,
+            kernel_initializer=self.kernel_initializer,
+            bias_initializer=self.bias_initializer,
+            kernel_regularizer=self.kernel_regularizer,
+            bias_regularizer=self.bias_regularizer,
+            activity_regularizer=self.activity_regularizer,
+            kernel_constraint=self.kernel_constraint,
+            bias_constraint=self.bias_constraint,
+            trainable=self.trainable,
+            name=name,
+        )
+
+    def build(self, input_shape):
+        if isinstance(input_shape, list):
+            input_shape_high, input_shape_low = input_shape
+        else:
+            input_shape_high, input_shape_low = input_shape, None
+        if len(input_shape_high) != 5:
+            raise ValueError(
+                "High frequency input should have rank 5; Received "
+                "input shape {}".format(str(input_shape_high))
+            )
+        if input_shape_low is not None and len(input_shape_low) != 5:
+            raise ValueError(
+                "Low frequency input should have rank 5; Received "
+                "input shape {}".format(str(input_shape_low))
+            )
+        if self.data_format == "channels_first":
+            channel_axis, depth_axis, height_axis, width_axis = 1, 2, 3, 4
+        else:
+            depth_axis, height_axis, width_axis, channel_axis = 1, 2, 3, 4
+        if input_shape_high[channel_axis] is None:
+            raise ValueError(
+                "The channel dimension of the higher spatial inputs "
+                "should be defined. Found `None`."
+            )
+        if input_shape_low is not None and input_shape_low[channel_axis] is None:
+            raise ValueError(
+                "The channel dimension of the lower spatial inputs "
+                "should be defined. Found `None`."
+            )
+        if (
+            input_shape_high[depth_axis] is not None
+            and input_shape_high[depth_axis] % self.octave != 0
+            or input_shape_high[height_axis] is not None
+            and input_shape_high[height_axis] % self.octave != 0
+            or input_shape_high[width_axis] is not None
+            and input_shape_high[width_axis] % self.octave != 0
+        ):
+            raise ValueError(
+                "The depths, heights and widths of the higher spatial inputs "
+                "should be divisible by the octave. "
+                "Found {} and {}.".format(input_shape_high, self.octave)
+            )
+        super(OctaveConv3D, self).build(input_shape)
