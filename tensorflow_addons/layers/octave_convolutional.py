@@ -14,39 +14,29 @@
 # =============================================================================
 """Keras octave convolution layers"""
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import abc
 import warnings
 
 import tensorflow as tf
 
-from tensorflow.python.keras import activations
-from tensorflow.python.keras import backend
-from tensorflow.python.keras import constraints
-from tensorflow.python.keras import initializers
-from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.keras import activations
+from tensorflow.keras import backend
+from tensorflow.keras import constraints
+from tensorflow.keras import initializers
+from tensorflow.keras import regularizers
+from tensorflow.keras.layers import Layer
 
-from tensorflow.python.keras.layers.pooling import AveragePooling1D
-from tensorflow.python.keras.layers.pooling import AveragePooling2D
-from tensorflow.python.keras.layers.pooling import AveragePooling3D
-from tensorflow.python.keras.layers import UpSampling1D
-from tensorflow.python.keras.layers import UpSampling2D
-from tensorflow.python.keras.layers import UpSampling3D
+from tensorflow.keras.layers import AveragePooling1D, AveragePooling2D, AveragePooling3D
+from tensorflow.keras.layers import UpSampling1D, UpSampling2D, UpSampling3D
 
-from tensorflow.python.keras.layers.convolutional import Conv1D
-from tensorflow.python.keras.layers.convolutional import Conv2D
-from tensorflow.python.keras.layers.convolutional import Conv3D
+from tensorflow.keras.layers import Conv1D, Conv2D, Conv3D
 
-from tensorflow.python.keras.utils import conv_utils
+import tensorflow_addons.utils.keras_utils as conv_utils
 
 
 class OctaveConv(Layer):
-    """Abstract N-D octave convolution layer (private, used as implementation base)
+    """
+    Abstract N-D octave convolution layer (private, used as implementation base)
 
     The octave convolutions factorize convolutional feature maps into two groups
     at different spatial frequencies and process them with different
@@ -136,7 +126,7 @@ class OctaveConv(Layer):
         name=None,
         **kwargs
     ):
-        super(OctaveConv, self).__init__(trainable=trainable, name=name, **kwargs)
+        super().__init__(trainable=trainable, name=name, **kwargs)
         self.rank = rank
         self.filters = filters
         self.kernel_size = conv_utils.normalize_tuple(kernel_size, rank, "kernel_size")
@@ -164,8 +154,6 @@ class OctaveConv(Layer):
         self.pooling = None
         self.up_sampling = None
 
-        self._trainable = trainable
-
         if self.padding != "same":
             warnings.warn(
                 "Padding set to {} for the octave convolution layer "
@@ -178,47 +166,6 @@ class OctaveConv(Layer):
         self.conv_high_to_high, self.conv_low_to_high = None, None
         self.conv_low_to_low, self.conv_high_to_low = None, None
         self.generate_convolutions()
-
-    def __call__(self, inputs, **kwargs):
-        try:
-            spec = [InputSpec(ndim=self.rank + 2)] * len(inputs)
-        except TypeError:
-            spec = InputSpec(ndim=self.rank + 2)
-        self.input_spec = spec
-        outputs = super(OctaveConv, self).__call__(inputs, **kwargs)
-        return outputs
-
-    @property
-    def trainable(self):
-        return self._trainable
-
-    @trainable.setter
-    def trainable(self, trainable):
-        """
-        Overwrites the trainable setter function of keras.layers.Layer to change
-        the trainable attribute of the four keras.layers.ConvND layers
-        called in this OctaveConvND layer.
-        Note: there could be only two ConvND layers that are called in
-        a OctaveConvND layer, for instance when you handle the input
-        and the output. This is the reason for the duplicated try/except blocks.
-        """
-        self._trainable = trainable
-        try:
-            self.conv_high_to_high.trainable = trainable
-        except AttributeError:
-            pass
-        try:
-            self.conv_high_to_low.trainable = trainable
-        except AttributeError:
-            pass
-        try:
-            self.conv_low_to_high.trainable = trainable
-        except AttributeError:
-            pass
-        try:
-            self.conv_low_to_low.trainable = trainable
-        except AttributeError:
-            pass
 
     @abc.abstractmethod
     def _init_conv(self, filters, name):
@@ -348,34 +295,8 @@ class OctaveConv(Layer):
             "kernel_constraint": constraints.serialize(self.kernel_constraint),
             "bias_constraint": constraints.serialize(self.bias_constraint),
         }
-        base_config = super(OctaveConv, self).get_config()
-        return dict(list(base_config.items()) + list(config.items()))
-
-    @property
-    def trainable_weights(self):
-        weights = []
-        if self.conv_high_to_high is not None:
-            weights += self.conv_high_to_high.trainable_weights
-        if self.conv_low_to_high is not None:
-            weights += self.conv_low_to_high.trainable_weights
-        if self.conv_high_to_low is not None:
-            weights += self.conv_high_to_low.trainable_weights
-        if self.conv_low_to_low is not None:
-            weights += self.conv_low_to_low.trainable_weights
-        return weights
-
-    @property
-    def non_trainable_weights(self):
-        weights = []
-        if self.conv_high_to_high is not None:
-            weights += self.conv_high_to_high.non_trainable_weights
-        if self.conv_low_to_high is not None:
-            weights += self.conv_low_to_high.non_trainable_weights
-        if self.conv_high_to_low is not None:
-            weights += self.conv_high_to_low.non_trainable_weights
-        if self.conv_low_to_low is not None:
-            weights += self.conv_low_to_low.non_trainable_weights
-        return weights
+        base_config = super().get_config()
+        return {**base_config, **config}
 
 
 @tf.keras.utils.register_keras_serializable(package="Addons")
@@ -398,7 +319,7 @@ class OctaveConv1D(OctaveConv):
     >>> # The inputs are 128-length vectors with 10 timesteps, and the batch size
     >>> # is None.
     >>> x = Input(shape=(10,128,))
-    >>> y = tf.keras.layers.octave_convolutional.OctaveConv1D(32, 3,
+    >>> y = tfa.keras.layers.octave_convolutional.OctaveConv1D(32, 3,
     ... padding='same', activation='relu',low_freq_ratio=0.25)(x)
     >>> print(len(y))
     2
@@ -499,6 +420,7 @@ class OctaveConv1D(OctaveConv):
         filters,
         kernel_size,
         octave=2,
+        rank=1,
         low_freq_ratio=0.25,
         strides=1,
         padding="same",
@@ -515,8 +437,8 @@ class OctaveConv1D(OctaveConv):
         bias_constraint=None,
         **kwargs
     ):
-        super(OctaveConv1D, self).__init__(
-            rank=1,
+        super().__init__(
+            rank=rank,
             filters=filters,
             kernel_size=kernel_size,
             octave=octave,
@@ -602,7 +524,7 @@ class OctaveConv1D(OctaveConv):
                 "Found {} and {}.".format(input_shape_high, self.octave)
             )
 
-        super(OctaveConv1D, self).build(input_shape)
+        super().build(input_shape)
 
 
 @tf.keras.utils.register_keras_serializable(package="Addons")
@@ -626,7 +548,7 @@ class OctaveConv2D(OctaveConv):
     >>> # The inputs are 28x28 RGB images with `channels_last` and the batch
     >>> # size is None.
     >>> x = Input(shape=(28,28,3,))
-    >>> y = tf.keras.layers.octave_convolutional.OctaveConv2D(
+    >>> y = tfa.keras.layers.octave_convolutional.OctaveConv2D(
     ... 32, 3, activation='relu', low_freq_ratio=0.25)(x)
     >>> print(len(y))
     2
@@ -729,7 +651,8 @@ class OctaveConv2D(OctaveConv):
         filters,
         kernel_size,
         octave=2,
-        low_freq_ratio=0.5,
+        rank=2,
+        low_freq_ratio=0.25,
         strides=(1, 1),
         padding="same",
         data_format=None,
@@ -745,8 +668,8 @@ class OctaveConv2D(OctaveConv):
         bias_constraint=None,
         **kwargs
     ):
-        super(OctaveConv2D, self).__init__(
-            rank=2,
+        super().__init__(
+            rank=rank,
             filters=filters,
             kernel_size=kernel_size,
             octave=octave,
@@ -842,7 +765,7 @@ class OctaveConv2D(OctaveConv):
                 "Found {} and {}.".format(input_shape_high, self.octave)
             )
 
-        super(OctaveConv2D, self).build(input_shape)
+        super().build(input_shape)
 
 
 @tf.keras.utils.register_keras_serializable(package="Addons")
@@ -867,7 +790,7 @@ class OctaveConv3D(OctaveConv):
     >>> # The inputs are 28x28x28 volumes with a single channel, and the
     >>> # batch size is None.
     >>> x = Input(shape=(28, 28, 28, 1,))
-    >>> y = tf.keras.layers.octave_convolutional.OctaveConv3D(
+    >>> y = tfa.keras.layers.octave_convolutional.OctaveConv3D(
     ... 32, 3, activation='relu', low_freq_ratio=0.25)(x)
     >>> print(len(y))
     2
@@ -975,6 +898,7 @@ class OctaveConv3D(OctaveConv):
         filters,
         kernel_size,
         octave=2,
+        rank=3,
         low_freq_ratio=0.25,
         strides=(1, 1, 1),
         padding="same",
@@ -991,8 +915,8 @@ class OctaveConv3D(OctaveConv):
         bias_constraint=None,
         **kwargs
     ):
-        super(OctaveConv3D, self).__init__(
-            rank=3,
+        super().__init__(
+            rank=rank,
             filters=filters,
             kernel_size=kernel_size,
             octave=octave,

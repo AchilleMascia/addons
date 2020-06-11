@@ -15,9 +15,8 @@
 """Tests for octave convolutional layers."""
 
 import numpy as np
-import pytest
 
-from tensorflow.python import keras
+import tensorflow as tf
 from tensorflow_addons.layers.octave_convolutional import (
     OctaveConv1D,
     OctaveConv2D,
@@ -25,15 +24,17 @@ from tensorflow_addons.layers.octave_convolutional import (
 )
 
 
-@pytest.mark.usefixtures("maybe_run_functions_eagerly")
-def test_octave_conv1d():
-    # verify output shape with padding
+#  OctaveConv1D tests
+def test_octave_conv1d_padding_output_shape():
+    # verify output_shape with padding
     kwargs = {"filters": 3, "kernel_size": 3, "low_freq_ratio": 0.5, "padding": "same"}
     layer = OctaveConv1D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((1, 10, 2))))
+    y = layer(np.ones((1, 10, 2)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == ([1, 10, 2], [1, 5, 1])
 
-    # verify output shape with dilation_rate
+
+def test_octave_conv1d_dilation_rate_output_shape():
+    # verify output_shape with dilation rate
     kwargs = {
         "filters": 3,
         "kernel_size": 3,
@@ -41,9 +42,11 @@ def test_octave_conv1d():
         "dilation_rate": 2,
     }
     layer = OctaveConv1D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((1, 20, 4))))
+    y = layer(np.ones((1, 20, 4)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == ([1, 20, 2], [1, 10, 1])
 
+
+def test_octave_conv1d_strides_output_shape():
     # verify output_shape with strides
     kwargs = {
         "filters": 3,
@@ -52,9 +55,11 @@ def test_octave_conv1d():
         "strides": 2,
     }
     layer = OctaveConv1D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((1, 20, 4))))
+    y = layer(np.ones((1, 20, 4)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == ([1, 10, 2], [1, 5, 1])
 
+
+def test_octave_conv1d_regularizers():
     # verify regularizers
     kwargs = {
         "filters": 3,
@@ -69,9 +74,11 @@ def test_octave_conv1d():
     layer = OctaveConv1D(**kwargs)
     layer.build((None, 10, 4))
     assert len(layer.losses) == 4
-    layer(keras.backend.variable(np.ones((1, 10, 4))))
+    layer(np.ones((1, 10, 4)))
     assert len(layer.losses) == 8
 
+
+def test_octave_conv1d_constraints():
     # verify constraints
     def identity(x):
         return x
@@ -98,17 +105,43 @@ def test_octave_conv1d():
     assert layer.bias[0].constraint, b_constraint
 
 
-@pytest.mark.usefixtures("maybe_run_functions_eagerly")
-def test_octave_conv2d():
+def test_ocatve_conv1d_output():
+    # verify numerical values with simple example case
+    kwargs = {
+        "filters": 3,
+        "kernel_size": 3,
+        "low_freq_ratio": 0.5,
+        "kernel_initializer": "ones",
+    }
+    layer = OctaveConv1D(**kwargs)
+    y = layer(np.ones((1, 2, 2)))
+    assert len(y) == 2
+    np.testing.assert_allclose([[[4.0, 4.0], [4.0, 4.0]]], y[0])
+    np.testing.assert_allclose([[[2.0]]], y[1])
+
+
+def test_octave_conv1d_serialization():
+    # verify serialization
+    kwargs = {"filters": 3, "kernel_size": 3, "low_freq_ratio": 0.5, "padding": "same"}
+    layer = OctaveConv1D(**kwargs)
+    serialized_layer = tf.keras.layers.serialize(layer)
+    new_layer = tf.keras.layers.deserialize(serialized_layer)
+    assert layer.get_config() == new_layer.get_config()
+
+
+# OctaveConv2D tests
+def test_octave_conv2d_padding_output_shape():
     # verify output_shape with padding
     kwargs = {"filters": 3, "kernel_size": 3, "low_freq_ratio": 0.5, "padding": "same"}
     layer = OctaveConv2D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((2, 28, 28, 3))))
+    y = layer(np.ones((2, 28, 28, 3)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == (
         [2, 28, 28, 2],
         [2, 14, 14, 1],
     )
 
+
+def test_octave_conv2d_dilation_rate_output_shape():
     # verify output_shape with dilation_rate
     kwargs = {
         "filters": 3,
@@ -117,12 +150,14 @@ def test_octave_conv2d():
         "dilation_rate": 2,
     }
     layer = OctaveConv2D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((2, 28, 28, 3))))
+    y = layer(np.ones((2, 28, 28, 3)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == (
         [2, 28, 28, 2],
         [2, 14, 14, 1],
     )
 
+
+def test_octave_conv2d_strides_output_shape():
     # verify output_shape with strides
     kwargs = {
         "filters": 3,
@@ -131,12 +166,14 @@ def test_octave_conv2d():
         "strides": 2,
     }
     layer = OctaveConv2D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((2, 28, 28, 3))))
+    y = layer(np.ones((2, 28, 28, 3)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == (
         [2, 14, 14, 2],
         [2, 7, 7, 1],
     )
 
+
+def test_octave_conv2d_regularizers():
     # verify regularizers
     kwargs = {
         "filters": 3,
@@ -151,9 +188,11 @@ def test_octave_conv2d():
     layer = OctaveConv2D(**kwargs)
     layer.build((None, 10, 10, 4))
     assert len(layer.losses) == 4
-    layer(keras.backend.variable(np.ones((1, 10, 10, 4))))
+    layer(np.ones((1, 10, 10, 4)))
     assert len(layer.losses) == 8
 
+
+def test_octave_conv2d_constraints():
     # verify contraints
     def identity(x):
         return x
@@ -180,17 +219,45 @@ def test_octave_conv2d():
     assert layer.bias[0].constraint == b_constraint
 
 
-@pytest.mark.usefixtures("maybe_run_functions_eagerly")
-def test_octave_conv3d():
+def test_ocatve_conv2d_output():
+    # verify numerical values with simple example case
+    kwargs = {
+        "filters": 3,
+        "kernel_size": 3,
+        "low_freq_ratio": 0.5,
+        "kernel_initializer": "ones",
+    }
+    layer = OctaveConv2D(**kwargs)
+    y = layer(np.ones((1, 2, 2, 2)))
+    assert len(y) == 2
+    np.testing.assert_allclose(
+        [[[[8.0, 8.0], [8.0, 8.0]], [[8.0, 8.0], [8.0, 8.0]]]], y[0]
+    )
+    np.testing.assert_allclose([[[[2.0]]]], y[1])
+
+
+def test_octave_conv2d_serialization():
+    # verify serialization
+    kwargs = {"filters": 3, "kernel_size": 3, "low_freq_ratio": 0.5, "padding": "same"}
+    layer = OctaveConv2D(**kwargs)
+    serialized_layer = tf.keras.layers.serialize(layer)
+    new_layer = tf.keras.layers.deserialize(serialized_layer)
+    assert layer.get_config() == new_layer.get_config()
+
+
+# OctaveConv3D tests
+def test_octave_conv3d_padding_output_shape():
     # verify output_shape with padding
     kwargs = {"filters": 3, "kernel_size": 3, "low_freq_ratio": 0.5, "padding": "same"}
     layer = OctaveConv3D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((2, 28, 28, 28, 3))))
+    y = layer(np.ones((2, 28, 28, 28, 3)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == (
         [2, 28, 28, 28, 2],
         [2, 14, 14, 14, 1],
     )
 
+
+def test_octave_conv3d_dilation_rate_output_shape():
     # verify output_shape with dilation_rate
     kwargs = {
         "filters": 3,
@@ -199,12 +266,14 @@ def test_octave_conv3d():
         "dilation_rate": 2,
     }
     layer = OctaveConv3D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((2, 28, 28, 28, 3))))
+    y = layer(np.ones((2, 28, 28, 28, 3)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == (
         [2, 28, 28, 28, 2],
         [2, 14, 14, 14, 1],
     )
 
+
+def test_octave_conv3d_strides_output_shape():
     # verify output_shape with strides
     kwargs = {
         "filters": 3,
@@ -213,12 +282,14 @@ def test_octave_conv3d():
         "strides": 2,
     }
     layer = OctaveConv3D(**kwargs)
-    y = layer(keras.backend.variable(np.ones((2, 28, 28, 28, 3))))
+    y = layer(np.ones((2, 28, 28, 28, 3)))
     assert (y[0].shape.as_list(), y[1].shape.as_list()) == (
         [2, 14, 14, 14, 2],
         [2, 7, 7, 7, 1],
     )
 
+
+def test_octave_conv3d_regularizers():
     # verify regularizers
     kwargs = {
         "filters": 3,
@@ -233,9 +304,11 @@ def test_octave_conv3d():
     layer = OctaveConv3D(**kwargs)
     layer.build((None, 10, 10, 10, 4))
     assert len(layer.losses) == 4
-    layer(keras.backend.variable(np.ones((1, 10, 10, 10, 4))))
+    layer(np.ones((1, 10, 10, 10, 4)))
     assert len(layer.losses) == 8
 
+
+def test_octave_conv3d_constraints():
     # verify constraints
     def identity(x):
         return x
@@ -260,3 +333,35 @@ def test_octave_conv3d():
     assert len(layer.bias) == 2
     assert layer.kernel[0].constraint == k_constraint
     assert layer.bias[0].constraint == b_constraint
+
+
+def test_ocatve_conv3d_output():
+    # verify numerical values with simple example case
+    kwargs = {
+        "filters": 3,
+        "kernel_size": 3,
+        "low_freq_ratio": 0.5,
+        "kernel_initializer": "ones",
+    }
+    layer = OctaveConv3D(**kwargs)
+    y = layer(np.ones((1, 2, 2, 2, 2)))
+    assert len(y) == 2
+    np.testing.assert_allclose(
+        [
+            [
+                [[[16.0, 16.0], [16.0, 16.0]], [[16.0, 16.0], [16.0, 16.0]]],
+                [[[16.0, 16.0], [16.0, 16.0]], [[16.0, 16.0], [16.0, 16.0]]],
+            ]
+        ],
+        y[0],
+    )
+    np.testing.assert_allclose([[[[[2.0]]]]], y[1])
+
+
+def test_octave_conv3d_serialization():
+    # verify serialization
+    kwargs = {"filters": 3, "kernel_size": 3, "low_freq_ratio": 0.5, "padding": "same"}
+    layer = OctaveConv3D(**kwargs)
+    serialized_layer = tf.keras.layers.serialize(layer)
+    new_layer = tf.keras.layers.deserialize(serialized_layer)
+    assert layer.get_config() == new_layer.get_config()
